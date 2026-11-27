@@ -1,0 +1,79 @@
+# Activity de Discord: puesta en marcha (paso a paso)
+
+Este es un repositorio **independiente** del bot. Lo unico que toma del bot es la lista de personajes, los iconos y las fuentes (`npm run sync`).
+
+Una Activity es una página web que Discord muestra dentro de un iframe. Este repositorio contiene:
+
+| Carpeta | Qué es |
+|---|---|
+| `src/`, `index.html` | La página (lo que ve el usuario) |
+| `api/` | 2 funciones de servidor: `token.js` (login) y `profile.js` (leer/guardar perfiles en Turso) |
+| `shared/` | Los codecs (perfil y squadcode) en JavaScript, idénticos a los de Python |
+| `public/` | Lista de personajes, iconos y fuentes copiados del bot (`npm run sync`) |
+| `test/vectors.json` | Codigos generados por Python para comprobar que los codecs coinciden (se regenera desde el repo del bot) |
+
+## 0. Requisitos
+- **Node.js LTS** (https://nodejs.org) y una cuenta gratuita de **Vercel** (https://vercel.com) conectada a tu GitHub.
+- La base de Turso que ya usa el bot (URL + token).
+
+## 1. Preparar el proyecto en tu PC
+Con el repo del bot clonado en una carpeta vecina (por ejemplo `../intel-jakdf-service`):
+```
+npm install
+npm test                                  # debe decir "OK: ... iguales a Python"
+npm run sync -- ../intel-jakdf-service    # copia roster.json, iconos y fuentes a public/
+```
+Haz commit de **todo**, incluido `package-lock.json` y `public/` (pero no `.env` ni `node_modules`, ya están ignorados) y súbelo a tu repo nuevo de GitHub.
+
+**Cuando cambie el roster o los iconos del bot**, repite `npm run sync -- <ruta>` y haz commit.
+**Cuando cambie un formato de codigo del bot** (perfil o squadcode), ejecuta en el repo del bot `python tools/gen_codec_vectors.py <ruta>/test/vectors.json` y corre `npm test` aqui: si falla, los codecs de `shared/` hay que actualizarlos.
+
+## 2. Discord Developer Portal  (https://discord.com/developers/applications)
+Usa **la misma aplicación del bot**.
+1. **Installation** → Installation Contexts: marca *User Install* y *Guild Install*.
+2. **OAuth2** → Redirects: añade `https://127.0.0.1` (es solo un marcador; el SDK hace la redirección) y guarda.
+3. En **OAuth2** copia el **Client ID** y pulsa *Reset Secret* para ver el **Client Secret**. El secret es como una contraseña: solo irá a Vercel.
+4. **Activities → Settings** → activa *Enable Activities*. Esto crea un comando de entrada "Launch".
+
+> Una Activity sin publicar solo la pueden abrir tú y los miembros del equipo de la aplicación.
+
+## 3. Vercel
+1. *Add New → Project* → elige el repositorio.
+2. Deja el *Root Directory* por defecto (la raíz). El framework debería detectarse como *Vite*.
+3. En *Environment Variables* añade (Production):
+
+| Nombre | Valor |
+|---|---|
+| `VITE_DISCORD_CLIENT_ID` | Client ID (público) |
+| `DISCORD_CLIENT_ID` | el mismo Client ID |
+| `DISCORD_CLIENT_SECRET` | Client Secret |
+| `TURSO_DATABASE_URL` | la URL de tu base (`libsql://…`) |
+| `TURSO_AUTH_TOKEN` | token de escritura |
+| `TURSO_READ_TOKEN` | opcional: token de solo lectura (`turso db tokens create <db> --read-only`) |
+
+4. *Deploy*. Al terminar tendrás una dirección como `mi-proyecto.vercel.app`.
+
+Cada vez que hagas `git push` a este repo, Vercel vuelve a desplegar solo. Si cambias una variable de entorno, hay que volver a desplegar.
+
+## 4. Conectar Discord con Vercel
+En el portal: **Activities → URL Mappings** → añade
+- Prefix: `/`
+- Target: `mi-proyecto.vercel.app`  ← **sin** `https://`
+
+## 5. Probar
+Abre Discord, entra a un servidor donde esté tu bot (o a un chat privado), abre el **App Launcher** (botón + junto al chat o el icono de cohete) y elige tu aplicación. Debería cargar el inicio con SQUAD y PROFILE.
+
+Prueba esto: PROFILE → *Edit my profile* → marca unos personajes → *Save*. Luego usa `/profile display` en el bot: tras unos minutos (el bot refresca su copia cada 15 min) debería mostrar lo mismo.
+
+## Si algo falla
+- **"No se pudo iniciar…"**: abre las herramientas de desarrollo de Discord de escritorio (Ctrl+Shift+I) y mira la consola y la pestaña Red.
+- **Pantalla en blanco**: revisa que el Target del URL Mapping no tenga `https://` ni `/` al final.
+- **"Discord rechazó el código"**: Client ID/Secret mal copiados en Vercel (¿redesplegaste después de cambiarlos?).
+- **"La base de datos no responde"**: URL/token de Turso, o cuota agotada.
+- **"No se encontró roster.json"**: falta ejecutar `npm run sync -- <ruta al bot>` y subir `public/`.
+- **Sin iconos**: genera los iconos (`tools/icongen.py` en el repo del bot) y vuelve a ejecutar `npm run sync -- <ruta al bot>`.
+
+## Seguridad (lo importante)
+- El navegador **nunca** ve el Client Secret ni los tokens de Turso: solo existen en las variables de Vercel.
+- `/api/profile` averigua quién eres preguntándole a Discord con tu token; el ID del usuario nunca se acepta desde el navegador. Solo puedes escribir **tu** perfil; leer perfiles ajenos está permitido (son públicos).
+- La web guarda con el botón *Save* (1 escritura). No guarda en cada clic.
