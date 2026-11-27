@@ -51,3 +51,18 @@ const back = S.fromDecoded(codec.decode(S.toCode(prof, "42")));
 assert.equal(back.count, 4); assert.equal(back.mode, "profile"); assert.equal(back.accountId, "987654321098765432");
 assert.deepEqual(S.visibleSlots(back), S.visibleSlots(d));
 console.log("OK: logica del editor de builds");
+
+// ---- tap en orden y arrastrar (v2)
+{
+  let d = S.emptyDraft(4);
+  d = S.addFirst(d, 10); d = S.addFirst(d, 11); assert.deepEqual(S.visibleSlots(d), [10, 11, 0, 0]);
+  d = S.clearSlot(d, 0); d = S.addFirst(d, 12); assert.deepEqual(S.visibleSlots(d), [12, 11, 0, 0]);   // rellena el hueco menor
+  d = S.addFirst(S.addFirst(d, 13), 14); assert.equal(S.addFirst(d, 15), null);                        // llena
+  d = S.placeAt(d, 3, 99); assert.deepEqual(S.visibleSlots(d), [12, 11, 13, 99]);                      // soltar sobre ocupada: reemplaza
+  d = S.placeAt(d, 0, 99); assert.deepEqual(S.visibleSlots(d), [99, 11, 13, 12]);                      // ya estaba: intercambia
+  assert.equal(S.placeAt(d, 0, 99), d);                                                               // misma casilla: nada
+  d = S.swapSlots(d, 1, 2); assert.deepEqual(S.visibleSlots(d), [99, 13, 11, 12]);
+  let e = S.setCount(S.emptyDraft(4), 16); assert.throws(() => S.placeAt(S.setCount(e, 4), 5, 1));
+  e = S.emptyDraft(16); e = S.placeAt(e, 15, 7); assert.equal(e.slots[15], 7);
+}
+console.log("squadstate v2 OK");

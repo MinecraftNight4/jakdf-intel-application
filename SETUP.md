@@ -77,3 +77,17 @@ Prueba esto: PROFILE → *Edit my profile* → marca unos personajes → *Save*.
 - El navegador **nunca** ve el Client Secret ni los tokens de Turso: solo existen en las variables de Vercel.
 - `/api/profile` averigua quién eres preguntándole a Discord con tu token; el ID del usuario nunca se acepta desde el navegador. Solo puedes escribir **tu** perfil; leer perfiles ajenos está permitido (son públicos).
 - La web guarda con el botón *Save* (1 escritura). No guarda en cada clic.
+
+---
+
+## Personalizar el aspecto (sin tocar JavaScript)
+
+Todo el estilo está en `src/styles.css`.
+
+- **Colores globales:** las variables de `:root` (arriba del archivo).
+- **Colores del editor de squads:** el bloque `.squad { --g-panel: ...; --m-panel: ...; }` justo al inicio de la sección "editor de builds". `--g-*` es el panel de la grilla y `--m-*` el panel principal con las 3 pestañas.
+- **Botones:** `.btn`, `.big.yellow / .green / .sky / .orange` (Share/Import) y `.mini`.
+- **Fondos propios:** copia la imagen a `public/bg/` y úsala con `background: url("/bg/mi-fondo.webp") center/cover;`.
+- **Por temporada:** en `main.js` pon `document.documentElement.dataset.season = "winter"` y en el CSS escribe `html[data-season="winter"] { --g-panel: #9fd8ff; }`.
+
+Con `npm run dev` ves los cambios al instante.

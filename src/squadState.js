@@ -46,6 +46,33 @@ export function nextEmpty(d, from = -1) {
   return -1;
 }
 
+/** Primera casilla visible vacia, o -1 si la build esta llena. */
+export const firstEmpty = (d) => d.slots.slice(0, d.count).findIndex((uuid) => !uuid);
+
+/** Tocar un personaje: va a la primera casilla libre (en orden). null si esta llena. */
+export function addFirst(d, uuid) {
+  const target = firstEmpty(d);
+  return target < 0 ? null : assign(d, target, uuid);
+}
+
+/** Intercambia dos casillas visibles (arrastrar una unidad sobre otra). */
+export function swapSlots(d, a, b) {
+  if ([a, b].some((i) => i < 0 || i >= d.count)) throw new Error("casilla fuera de rango");
+  const slots = [...d.slots];
+  [slots[a], slots[b]] = [slots[b], slots[a]];
+  return { ...d, slots };
+}
+
+/**
+ * Suelta ``uuid`` en ``slot`` (arrastrar desde la lista o desde otra casilla).
+ * Si el personaje ya estaba en otra casilla, las dos se intercambian: no se pierde nada.
+ */
+export function placeAt(d, slot, uuid) {
+  const from = d.slots.slice(0, d.count).indexOf(uuid);
+  if (from === slot) return d;
+  return from >= 0 ? swapSlots(d, from, slot) : assign(d, slot, uuid);
+}
+
 /** Elegir un personaje: va a la casilla seleccionada, o a la primera libre. Devuelve null si no hay donde ponerlo. */
 export function place(d, selected, uuid) {
   const target = selected >= 0 ? selected : nextEmpty(d, -1);
