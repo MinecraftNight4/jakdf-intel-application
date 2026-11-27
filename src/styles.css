@@ -3,7 +3,11 @@
 
 :root { --bg: #071f1f; --panel: #0a3535; --accent: #43d7d7; --text: #d6fffe; --muted: #7fb6b5; --green: #6fdc2d; --red: #ff4b4b; --blue: #3b82f6; }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Gothic", system-ui, sans-serif; font-size: 15px; -webkit-tap-highlight-color: transparent; }
+/* Fondo de la Activity: la cuadricula (PNG con huecos transparentes) sobre un degradado vertical. */
+:root { --bg-top: #248687; --bg-bottom: #000000; --bg-tile: 191px; }
+html { background: url("/bg/grid.png") 0 0 / var(--bg-tile) var(--bg-tile) repeat, linear-gradient(to bottom, var(--bg-top), var(--bg-bottom)); background-color: var(--bg-bottom); image-rendering: pixelated; }
+body { background: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; color: var(--text); font-family: "Gothic", system-ui, sans-serif; font-size: 15px; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
 
 /* Toda la Activity cabe en la pantalla: solo las listas hacen scroll. */
@@ -29,7 +33,7 @@ h1 { font-family: "Bungee", sans-serif; font-weight: 400; margin: 0; flex: 1; mi
 @media (max-width: 460px) { .user span { display: none; } }
 
 /* ---------- inicio ---------- */
-.news { border: 3px solid var(--red); padding: 14px; color: var(--muted); flex: none; }
+.news { background: #0008; border: 3px solid var(--red); padding: 14px; color: var(--muted); flex: none; }
 .menu { flex: 1; min-height: 0; display: flex; gap: 16px; align-items: center; justify-content: center; }
 .tile { font-family: "Bungee", sans-serif; font-size: clamp(14px, 4.5vw, 22px); width: min(40vw, 190px); aspect-ratio: 1; border: 0; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .tile .big { font-size: clamp(36px, 13vw, 64px); }
