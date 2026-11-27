@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "sync": "node scripts/sync-assets.mjs",
-    "test": "node test/codec.test.mjs"
+    "test": "node test/codec.test.mjs && node test/squadstate.test.mjs"
   },
   "dependencies": {
     "@discord/embedded-app-sdk": "latest",

@@ -24,9 +24,3 @@ export async function login() {
   if (!auth) throw new Error("Discord rechazo la autenticacion");
   return { token: access_token, user: auth.user };
 }
-
-export function avatarUrl(user) {
-  return user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128` : null;
-}
-
-export const displayName = (user) => user.global_name || user.username;
