@@ -22,3 +22,15 @@ export async function getRoster() {
   if (!reply.ok) throw new Error("No se encontro roster.json (ejecuta `npm run sync` y sube los cambios)");
   return (await reply.json()).characters;
 }
+
+/** Sube una imagen PNG (Blob) y devuelve su URL efimera del CDN de Discord (para openShareMomentDialog). */
+export async function uploadShareImage(blob) {
+  const reply = await fetch("/api/share", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+    body: blob,
+  });
+  const body = await reply.json().catch(() => ({}));
+  if (!reply.ok) throw new Error(body.error || `Error ${reply.status}`);
+  return body.url;
+}

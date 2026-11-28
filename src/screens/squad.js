@@ -1,8 +1,11 @@
 import { CodeError, MAX_DESCRIPTION, MAX_NEWLINES, countNewlines, decode } from "../../shared/squadCodec.js";
+import { uploadShareImage } from "../api.js";
+import { sdk } from "../discord.js";
 import { enableDrag } from "../drag.js";
 import { h, mount } from "../dom.js";
 import { charName, go, loadOwned, state, unitInfo } from "../state.js";
 import * as S from "../squadState.js";
+import { displayName } from "../user.js";
 import { attachTooltips, copyText, dialog, header, hideTip, scrollbox, toast, unitIcon } from "../ui.js";
 
 /** Fila de pestañas (la activa se funde con el panel). ``items`` = [[id, texto], ...]. */
@@ -71,7 +74,7 @@ export async function squadScreen(app, opts = {}) {
   // -- compartir / importar
   const codeBtn = h("button", { class: "big yellow", onClick: () => copy(code(), "Squadcode copied ✔") }, "COPY SQUADCODE TO CLIPBOARD");
   const cmdBtn = h("button", { class: "big green", onClick: () => copy(`/squad share squadcode:${code()} private:`, "Command copied ✔") }, "COPY \"/squad\" COMMAND");
-  const imgBtn = h("button", { class: "big sky", onClick: () => copyImage() }, "COPY SQUAD IMAGE");
+  const imgBtn = h("button", { class: "big sky", onClick: () => shareImage() }, "SHARE SQUAD IMAGE");
   const importInput = h("input", { class: "code", type: "text", placeholder: "Paste a squadcode…", spellcheck: "false", autocomplete: "off",
     onKeydown: (e) => { if (e.key === "Enter") importCode(); } });
   const importBtn = h("button", { class: "big orange small", onClick: () => importCode() }, "IMPORT");
@@ -182,35 +185,64 @@ export async function squadScreen(app, opts = {}) {
     area.focus(); area.select();
   }
 
+  // Imagen de la build: titulo con el nombre del jugador, retratos con su nombre y la nota abajo.
   async function squadImage() {
-    const cells = S.visibleSlots(draft), cols = 4, rows = Math.ceil(cells.length / cols), size = 128, gap = 8, pad = 16;
+    const cells = S.visibleSlots(draft), cols = 4, rows = Math.ceil(cells.length / cols);
+    const size = 128, gap = 10, pad = 18, label = 22, head = 54;
+    const width = pad * 2 + cols * size + (cols - 1) * gap;
+    const note = draft.description.trim();
+    const noteLines = note ? wrapLines(note, 58) : [];
+    const foot = noteLines.length ? 14 + noteLines.length * 20 : 0;
+    const height = head + pad + rows * (size + label) + (rows - 1) * gap + pad + foot;
+    try { await document.fonts.load('24px "Bungee"'); } catch { /* sin fuente: se usa la de respaldo */ }
+
     const canvas = h("canvas");
-    canvas.width = pad * 2 + cols * size + (cols - 1) * gap;
-    canvas.height = pad * 2 + rows * size + (rows - 1) * gap;
+    canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#0a3535";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, "#248687"); sky.addColorStop(1, "#06161a");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = "#0006"; ctx.fillRect(0, 0, width, head);
+    ctx.fillStyle = "#fff"; ctx.textBaseline = "middle";
+    ctx.font = '24px "Bungee", sans-serif';
+    ctx.fillText(fit(ctx, `${displayName(state.user)}'s squad`, width - pad * 2), pad, head / 2);
+
     await Promise.all(cells.map((uuid, i) => new Promise((resolve) => {
-      const x = pad + (i % cols) * (size + gap), y = pad + Math.floor(i / cols) * (size + gap);
-      ctx.fillStyle = "#0b2a3a";
-      ctx.fillRect(x, y, size, size);
+      const x = pad + (i % cols) * (size + gap), y = head + pad + Math.floor(i / cols) * (size + label + gap);
+      ctx.fillStyle = "#0b2a3a"; ctx.fillRect(x, y, size, size);
+      const char = charOf(uuid);
+      ctx.fillStyle = "#fff"; ctx.font = '13px "Gothic", sans-serif'; ctx.textBaseline = "middle";
+      ctx.fillText(fit(ctx, char ? char.name : "?", size), x, y + size + label / 2);
       const img = new Image();
       img.onload = () => { ctx.drawImage(img, x, y, size, size); resolve(); };
       img.onerror = () => resolve();
       img.src = `/characters/${uuid}.png`;
     })));
+
+    if (noteLines.length) {
+      ctx.fillStyle = "#ffffffcc"; ctx.font = '14px "Gothic", sans-serif';
+      noteLines.forEach((line, i) => ctx.fillText(line, pad, height - foot + 14 + i * 20 + 6));
+    }
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
-  async function copyImage() {
+  /** Comparte la imagen como lo hace Wordle: dialogo de Discord, el mensaje lo envia el propio usuario. */
+  async function shareImage() {
     if (!code()) return;
     toast("Making the image…");
     const blob = await squadImage();
     if (!blob) return toast("Couldn't make the image");
     try {
+      const mediaUrl = await uploadShareImage(blob);
+      await sdk.commands.openShareMomentDialog({ mediaUrl });
+      return;
+    } catch (err) {
+      console.warn("Share Moment no disponible:", err);
+    }
+    try {                                              // plan B: portapapeles
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-      return toast("Squad image copied ✔");
-    } catch { /* sin permiso: se muestra para guardarla a mano */ }
+      return toast("Sharing isn't available here: image copied instead ✔");
+    } catch { /* plan C: mostrarla */ }
     const url = URL.createObjectURL(blob);
     dialog("Squad image", [h("img", { class: "preview", src: url, alt: "Squad" }), h("p", { class: "hint" }, "Press and hold (or right-click) the image to copy or save it.")],
       (close) => [h("a", { class: "btn", href: url, download: "squad.png" }, "Download"), h("button", { class: "btn", onClick: () => { close(); URL.revokeObjectURL(url); } }, "Close")]);
@@ -286,3 +318,24 @@ export async function squadScreen(app, opts = {}) {
   paintPane();
 }
 
+
+/** Recorta el texto con "…" para que quepa en ``max`` pixeles. */
+function fit(ctx, text, max) {
+  if (ctx.measureText(text).width <= max) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(`${t}…`).width > max) t = t.slice(0, -1);
+  return `${t}…`;
+}
+
+/** Parte un texto en lineas de ~``width`` caracteres, respetando los saltos de linea (maximo 6 lineas). */
+function wrapLines(text, width) {
+  const out = [];
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const word of para.split(/\s+/).filter(Boolean)) {
+      if (line && `${line} ${word}`.length > width) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
+    }
+    out.push(line);
+  }
+  return out.slice(0, 6);
+}
