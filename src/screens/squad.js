@@ -1,5 +1,5 @@
 import { CodeError, MAX_DESCRIPTION, MAX_NEWLINES, countNewlines, decode } from "../../shared/squadCodec.js";
-import { uploadShareImage } from "../api.js";
+import { searchProfiles, uploadShareImage } from "../api.js";
 import { sdk } from "../discord.js";
 import { enableDrag } from "../drag.js";
 import { h, mount } from "../dom.js";
@@ -24,6 +24,7 @@ export async function squadScreen(app, opts = {}) {
   if (opts.mode === "profile") draft = { ...draft, mode: "profile", accountId: String(state.user.id) };
   let owned = null;                              // { uuid: dupes } de la cuenta de referencia (modo "profile")
   let pane = "roster";                           // pestaña del panel principal
+  let searching = false;                         // la pestaña SEARCH esta abierta (caja de busqueda visible)
 
   const commit = (next) => { draft = next; state.draft = next; };
   commit(draft);
@@ -57,14 +58,17 @@ export async function squadScreen(app, opts = {}) {
 
   // -- roster
   const modeTabs = tabBar([["all", "FULL ROSTER"], ["profile", "MY PROFILE"], ["search", "SEARCH"]], (id) => {
-    if (id === "search") return toast("Search profile is coming soon");
+    if (id === "search") return openSearch();
     switchMode(id);
   }, "sub");
-  modeTabs.el.querySelector(":scope > :last-child").classList.add("soon");
+  const searchInput = h("input", { type: "search", placeholder: "Search a username or ID…", autocomplete: "off", spellcheck: "false", onInput: () => scheduleSearch() });
+  const results = h("div", { class: "results" });
+  const searchView = h("div", { class: "searchview" }, searchInput, results);
+  searchView.hidden = true;
   const filter = h("input", { type: "search", placeholder: "Filter by name", onInput: () => applyFilter() });
   const grid = h("div", { class: "grid" });
   const rosterBox = scrollbox(grid, "fill");
-  const rosterPane = h("div", { class: "pane roster" }, modeTabs.el, filter, rosterBox);
+  const rosterPane = h("div", { class: "pane roster" }, modeTabs.el, searchView, filter, rosterBox);
 
   // -- nota
   const noteBox = h("textarea", { class: "note", maxlength: String(MAX_DESCRIPTION), placeholder: "Write a note!" });
@@ -130,10 +134,16 @@ export async function squadScreen(app, opts = {}) {
     hintShare.textContent = value ? "" : `Fill all ${draft.count} slots to share this build.`;
   }
 
+  const viewingOther = () => draft.mode === "profile" && draft.accountId && String(draft.accountId) !== String(state.user.id);
+
   function paintTabs() {
-    const mine = draft.accountId && String(draft.accountId) === String(state.user.id);
-    modeTabs.label("profile", draft.mode === "profile" && !mine ? "SHARED PROFILE" : "MY PROFILE");
-    modeTabs.set(draft.mode);
+    const other = viewingOther();
+    const name = other ? state.names.get(String(draft.accountId)) : null;
+    modeTabs.label("search", other ? (name ? `@${name}` : "SHARED") : "SEARCH");
+    modeTabs.set(searching || other ? "search" : draft.mode);
+    searchView.hidden = !searching;
+    filter.hidden = rosterBox.hidden = searching;
+    if (!searching) queueMicrotask(() => rosterBox.update?.());
     countTabs.set(String(draft.count));
     mainTabs.set(pane);
   }
@@ -156,11 +166,50 @@ export async function squadScreen(app, opts = {}) {
 
   // ---------------------------------------------------------------- acciones
   async function switchMode(mode) {
-    if (draft.mode === mode) return;
-    commit({ ...draft, mode, accountId: mode === "profile" ? String(state.user.id) : null });
+    const account = mode === "profile" ? String(state.user.id) : null;
+    searching = false;
+    if (draft.mode === mode && (draft.accountId ? String(draft.accountId) : null) === account) return paint();
+    commit({ ...draft, mode, accountId: account });
     await loadPool();
     paintRoster();
     paint();
+  }
+
+  function openSearch() {
+    searching = true;
+    paint();
+    if (!searchInput.matches(":focus")) searchInput.focus({ preventScroll: true });
+  }
+
+  /** Elegir un jugador de los resultados: su roster pasa a ser la lista (modo "profile" de otra cuenta). */
+  async function openAccount(userId, username) {
+    searching = false;
+    state.names.set(String(userId), username);
+    commit({ ...draft, mode: "profile", accountId: String(userId) });
+    await loadPool();
+    paintRoster();
+    paint();
+  }
+
+  let searchTimer = 0, searchSeq = 0;
+  function scheduleSearch() {
+    clearTimeout(searchTimer);
+    const q = searchInput.value.trim();
+    if (q.replace(/^@/, "").length < 2) { results.replaceChildren(h("p", { class: "hint" }, "Type at least 2 characters.")); return; }
+    results.replaceChildren(h("p", { class: "hint" }, "Searching…"));
+    searchTimer = setTimeout(async () => {
+      const mine = ++searchSeq;
+      try {
+        const found = await searchProfiles(q);
+        if (mine !== searchSeq) return;                       // llego una busqueda mas nueva
+        results.replaceChildren(...(found.length
+          ? found.map((p) => h("button", { class: "res", onClick: () => openAccount(p.userId, p.username) },
+              h("span", { class: "at" }, `@${p.username}`), h("span", { class: "id" }, p.userId)))
+          : [h("p", { class: "hint" }, "No players found. They need to have saved a profile.")]));
+      } catch (err) {
+        if (mine === searchSeq) results.replaceChildren(h("p", { class: "error" }, err.message));
+      }
+    }, 350);
   }
 
   /** Tocar un personaje de la lista: si ya esta puesto se quita; si no, va al primer hueco libre. */

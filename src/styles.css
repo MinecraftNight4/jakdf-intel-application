@@ -119,7 +119,14 @@ textarea.note { resize: none; min-height: 90px; }
 .sub { gap: 4px; }
 .sub .ptab { margin: 0; border: 3px solid #b77ac4; background: transparent; color: #fff; font-size: 12px; padding: 3px 2px; }
 .sub .ptab.on { background: #d9a6e3; color: #000; }
-.sub .ptab.soon { opacity: .55; }
+.sub .ptab { overflow: hidden; text-overflow: ellipsis; }
+.searchview { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.results { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.res { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font: inherit; text-align: left; padding: 8px 10px; background: #0a3a9a; color: #fff; border: 2px solid #0a1f52; cursor: pointer; }
+.res:hover { background: #1a52c8; }
+.res .at { font-size: 16px; overflow: hidden; text-overflow: ellipsis; }
+.res .id { font-size: 11px; opacity: .6; }
+.results .hint { color: #cfe0ff; margin: 0; }
 .pane.roster .sb { flex: 1; }
 .pane.roster .grid .cell.pick { touch-action: pan-y; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
 body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }

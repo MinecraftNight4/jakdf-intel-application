@@ -7,6 +7,7 @@ export const state = {
   roster: [],
   byUuid: new Map(),
   ownedBy: new Map(),            // id de usuario (texto) -> { uuid: dupes }
+  names: new Map(),              // id de usuario (texto) -> username (para mostrar "@nombre")
   draft: emptyDraft(4),          // la build en curso: sobrevive mientras la Activity sigue abierta
 };
 
@@ -18,7 +19,9 @@ export const go = (name, ...args) => routes[name](...args);
 export async function loadOwned(userId, force = false) {
   const id = String(userId ?? state.user.id);
   if (!force && state.ownedBy.has(id)) return state.ownedBy.get(id);
-  const owned = unpack((await getProfile(id)).data);
+  const profile = await getProfile(id);
+  const owned = unpack(profile.data);
+  if (profile.username) state.names.set(id, profile.username);
   state.ownedBy.set(id, owned);
   return owned;
 }

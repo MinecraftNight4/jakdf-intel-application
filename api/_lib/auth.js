@@ -10,15 +10,15 @@ export async function requireUser(req, res) {
     return null;
   }
   const hit = cache.get(token);
-  if (hit && hit.until > Date.now()) return { id: hit.id };
+  if (hit && hit.until > Date.now()) return { id: hit.id, username: hit.username };
 
   const reply = await fetch("https://discord.com/api/v10/users/@me", { headers: { Authorization: `Bearer ${token}` } });
   if (!reply.ok) {
     res.status(401).json({ error: "Token de Discord invalido o caducado" });
     return null;
   }
-  const { id } = await reply.json();
+  const { id, username } = await reply.json();
   if (cache.size > 500) cache.clear();
-  cache.set(token, { id, until: Date.now() + TTL_MS });
-  return { id };
+  cache.set(token, { id, username, until: Date.now() + TTL_MS });
+  return { id, username };
 }

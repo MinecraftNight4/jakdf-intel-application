@@ -13,7 +13,7 @@ async function call(path, options = {}) {
   return reply.json();
 }
 
-/** { userId, data, updatedAt }. Sin argumento: tu propio perfil. */
+/** { userId, data, updatedAt, username }. Sin argumento: tu propio perfil. */
 export const getProfile = (userId) => call(`/api/profile${userId ? `?user=${encodeURIComponent(userId)}` : ""}`);
 export const saveProfile = (data) => call("/api/profile", { method: "PUT", body: JSON.stringify({ data }) });
 
@@ -33,4 +33,9 @@ export async function uploadShareImage(blob) {
   const body = await reply.json().catch(() => ({}));
   if (!reply.ok) throw new Error(body.error || `Error ${reply.status}`);
   return body.url;
+}
+
+/** Busca jugadores por username (prefijo) o por ID de Discord. Devuelve [{ userId, username }]. */
+export async function searchProfiles(query) {
+  return (await call(`/api/search?q=${encodeURIComponent(query)}`)).results;
 }

@@ -1,8 +1,8 @@
 // GET /api/profile            -> tu perfil
 // GET /api/profile?user=<id>  -> el perfil de otro usuario (los perfiles son publicos)
-// PUT /api/profile { data }   -> guarda TU perfil (el usuario sale del token, nunca del cuerpo)
+// PUT /api/profile { data }   -> guarda TU perfil (el usuario y su username salen del token, nunca del cuerpo)
 import { requireUser } from "./_lib/auth.js";
-import { readProfile, writeProfile } from "./_lib/db.js";
+import { normalizeUsername, readProfile, syncUsername, writeProfile } from "./_lib/db.js";
 import { pack, unpack } from "../shared/profileCodec.js";
 
 const lastWrite = new Map();             // freno basico por usuario (por instancia)
@@ -15,8 +15,12 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const wanted = typeof req.query.user === "string" ? req.query.user : me.id;
       if (!/^\d{5,25}$/.test(wanted)) return res.status(400).json({ error: "ID de usuario invalido" });
-      const { data, updatedAt } = await readProfile(wanted);
-      return res.status(200).json({ userId: wanted, data, updatedAt });
+      let { data, updatedAt, username } = await readProfile(wanted);
+      // Al abrir tu propio perfil se mantiene al dia tu username (solo escribe si cambio).
+      if (wanted === me.id && updatedAt > 0 && normalizeUsername(me.username) && username !== normalizeUsername(me.username)) {
+        try { await syncUsername(me.id, me.username); username = normalizeUsername(me.username); } catch (err) { console.error("username sync:", err); }
+      }
+      return res.status(200).json({ userId: wanted, data, updatedAt, username });
     }
     if (req.method === "PUT") {
       if (Date.now() - (lastWrite.get(me.id) || 0) < MIN_WRITE_GAP_MS) return res.status(429).json({ error: "Demasiado rapido, espera un momento" });
@@ -28,7 +32,7 @@ export default async function handler(req, res) {
       } catch {
         return res.status(400).json({ error: "Perfil invalido" });
       }
-      await writeProfile(me.id, data);
+      await writeProfile(me.id, data, me.username);
       return res.status(200).json({ ok: true, data });
     }
     res.setHeader("Allow", "GET, PUT");
