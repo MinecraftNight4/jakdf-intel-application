@@ -3,20 +3,29 @@ import { searchProfiles, uploadShareImage } from "../api.js";
 import { sdk } from "../discord.js";
 import { enableDrag } from "../drag.js";
 import { h, mount } from "../dom.js";
+import { icon } from "../icons.js";
+import { squadImage } from "../shareImage.js";
 import { charName, go, loadOwned, state, unitInfo } from "../state.js";
 import * as S from "../squadState.js";
-import { displayName } from "../user.js";
 import { attachTooltips, copyText, dialog, header, hideTip, scrollbox, toast, unitIcon } from "../ui.js";
 
-/** Fila de pestañas (la activa se funde con el panel). ``items`` = [[id, texto], ...]. */
+/** Fila de pestañas (la activa se funde con el panel). ``items`` = [[id, texto, icono?], ...]. */
 function tabBar(items, onPick, cls = "") {
-  const buttons = new Map(items.map(([id, text]) => [id, h("button", { class: "ptab", onClick: () => onPick(id) }, text)]));
+  const labels = new Map();
+  const buttons = new Map(items.map(([id, text, ico]) => {
+    const label = h("span", { class: "lbl" }, text);
+    labels.set(id, label);
+    return [id, h("button", { class: "ptab", onClick: () => onPick(id) }, ico && icon(ico), label)];
+  }));
   return {
     el: h("div", { class: `ptabs ${cls}`.trim() }, ...buttons.values()),
     set(active) { buttons.forEach((b, id) => b.classList.toggle("on", id === active)); },
-    label(id, text) { buttons.get(id).textContent = text; },
+    label(id, text) { labels.get(id).textContent = text; },
   };
 }
+
+/** Boton grande con el icono encima del texto. */
+const bigButton = (cls, ico, text, onClick) => h("button", { class: `big ${cls}`, onClick }, icon(ico), h("span", {}, text));
 
 /** Editor de builds. ``opts.mode === "profile"`` abre directamente con el roster de tu cuenta. */
 export async function squadScreen(app, opts = {}) {
@@ -54,7 +63,7 @@ export async function squadScreen(app, opts = {}) {
     h("div", { class: "pbody" }, slotsBox, h("div", { class: "pfoot" }, filledText, resetBtn)));
 
   // ---------------------------------------------------------------- panel principal
-  const mainTabs = tabBar([["roster", "ROSTER"], ["note", "NOTE"], ["share", "SHARE / IMPORT"]], (id) => { pane = id; paintPane(); });
+  const mainTabs = tabBar([["roster", "ROSTER", "apps"], ["note", "NOTE", "notes"], ["share", "SHARE / IMPORT", "share"]], (id) => { pane = id; paintPane(); });
 
   // -- roster
   const modeTabs = tabBar([["all", "FULL ROSTER"], ["profile", "MY PROFILE"], ["search", "SEARCH"]], (id) => {
@@ -76,17 +85,17 @@ export async function squadScreen(app, opts = {}) {
   const notePane = h("div", { class: "pane note" }, h("div", { class: "notewrap" }, noteBox, noteCount));
 
   // -- compartir / importar
-  const codeBtn = h("button", { class: "big yellow", onClick: () => copy(code(), "Squadcode copied ✔") }, "COPY SQUADCODE TO CLIPBOARD");
-  const cmdBtn = h("button", { class: "big green", onClick: () => copy(`/squad share squadcode:${code()} private:`, "Command copied ✔") }, "COPY \"/squad\" COMMAND");
-  const imgBtn = h("button", { class: "big sky", onClick: () => shareImage() }, "SHARE SQUAD IMAGE");
+  const codeBtn = bigButton("yellow", "qr_code_scanner", "COPY SQUADCODE TO CLIPBOARD", () => copy(code(), "Squadcode copied ✔"));
+  const cmdBtn = bigButton("green", "terminal_add", "COPY \"/squad\" COMMAND", () => copy(`/squad share squadcode:${code()} private:`, "Command copied ✔"));
+  // Compartir la imagen abre el dialogo de Discord, que en el movil no esta disponible: alli el boton no se muestra.
+  const imgBtn = document.documentElement.dataset.platform === "mobile" ? null : bigButton("sky", "document_share", "SHARE SQUAD IMAGE", () => shareImage());
   const importInput = h("input", { class: "code", type: "text", placeholder: "Paste a squadcode…", spellcheck: "false", autocomplete: "off",
     onKeydown: (e) => { if (e.key === "Enter") importCode(); } });
   const importBtn = h("button", { class: "big orange small", onClick: () => importCode() }, "IMPORT");
-  const importErr = h("p", { class: "error" });
   const hintShare = h("p", { class: "hint" });
   const sharePane = h("div", { class: "pane share" },
     h("div", { class: "bigs" }, codeBtn, cmdBtn, imgBtn), hintShare,
-    h("div", { class: "importrow" }, importInput, importBtn), importErr);
+    h("div", { class: "importrow" }, importInput, importBtn));
 
   const panes = { roster: rosterPane, note: notePane, share: sharePane };
   const mainPanel = h("section", { class: "panel mainpanel" }, mainTabs.el, h("div", { class: "pbody" }, rosterPane, notePane, sharePane));
@@ -124,13 +133,14 @@ export async function squadScreen(app, opts = {}) {
   }
 
   function paintNote() {
-    noteCount.textContent = `${Array.from(draft.description).length > 0 ? `${Array.from(draft.description).length} · ` : ""}character limit: ${MAX_DESCRIPTION}`;
+    noteCount.textContent = `character limit: ${MAX_DESCRIPTION - Array.from(draft.description).length}`;
     noteCount.title = `${countNewlines(draft.description)}/${MAX_NEWLINES} line breaks`;
   }
 
   function paintShare() {
     const value = code();
-    codeBtn.disabled = cmdBtn.disabled = imgBtn.disabled = !value;
+    codeBtn.disabled = cmdBtn.disabled = !value;
+    if (imgBtn) imgBtn.disabled = !value;
     hintShare.textContent = value ? "" : `Fill all ${draft.count} slots to share this build.`;
   }
 
@@ -234,52 +244,19 @@ export async function squadScreen(app, opts = {}) {
     area.focus(); area.select();
   }
 
-  // Imagen de la build: titulo con el nombre del jugador, retratos con su nombre y la nota abajo.
-  async function squadImage() {
-    const cells = S.visibleSlots(draft), cols = 4, rows = Math.ceil(cells.length / cols);
-    const size = 128, gap = 10, pad = 18, label = 22, head = 54;
-    const width = pad * 2 + cols * size + (cols - 1) * gap;
-    const note = draft.description.trim();
-    const noteLines = note ? wrapLines(note, 58) : [];
-    const foot = noteLines.length ? 14 + noteLines.length * 20 : 0;
-    const height = head + pad + rows * (size + label) + (rows - 1) * gap + pad + foot;
-    try { await document.fonts.load('24px "Bungee"'); } catch { /* sin fuente: se usa la de respaldo */ }
-
-    const canvas = h("canvas");
-    canvas.width = width; canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    const sky = ctx.createLinearGradient(0, 0, 0, height);
-    sky.addColorStop(0, "#248687"); sky.addColorStop(1, "#06161a");
-    ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
-    ctx.fillStyle = "#0006"; ctx.fillRect(0, 0, width, head);
-    ctx.fillStyle = "#fff"; ctx.textBaseline = "middle";
-    ctx.font = '24px "Bungee", sans-serif';
-    ctx.fillText(fit(ctx, `${displayName(state.user)}'s squad`, width - pad * 2), pad, head / 2);
-
-    await Promise.all(cells.map((uuid, i) => new Promise((resolve) => {
-      const x = pad + (i % cols) * (size + gap), y = head + pad + Math.floor(i / cols) * (size + label + gap);
-      ctx.fillStyle = "#0b2a3a"; ctx.fillRect(x, y, size, size);
-      const char = charOf(uuid);
-      ctx.fillStyle = "#fff"; ctx.font = '13px "Gothic", sans-serif'; ctx.textBaseline = "middle";
-      ctx.fillText(fit(ctx, char ? char.name : "?", size), x, y + size + label / 2);
-      const img = new Image();
-      img.onload = () => { ctx.drawImage(img, x, y, size, size); resolve(); };
-      img.onerror = () => resolve();
-      img.src = `/characters/${uuid}.png`;
-    })));
-
-    if (noteLines.length) {
-      ctx.fillStyle = "#ffffffcc"; ctx.font = '14px "Gothic", sans-serif';
-      noteLines.forEach((line, i) => ctx.fillText(line, pad, height - foot + 14 + i * 20 + 6));
-    }
-    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  // Imagen de la build: la misma disposicion que dibuja el bot (ver shareImage.js).
+  function buildImage() {
+    const account = draft.mode === "profile" && draft.accountId ? String(draft.accountId) : null;
+    let title = `BUILD MADE BY @${state.user.username}`;
+    if (account) title += ` - @${state.names.get(account) || account} ACCOUNT`;
+    return squadImage({ slots: S.visibleSlots(draft), title, description: draft.description.trim(), byUuid: state.byUuid });
   }
 
   /** Comparte la imagen como lo hace Wordle: dialogo de Discord, el mensaje lo envia el propio usuario. */
   async function shareImage() {
     if (!code()) return;
     toast("Making the image…");
-    const blob = await squadImage();
+    const blob = await buildImage();
     if (!blob) return toast("Couldn't make the image");
     try {
       const mediaUrl = await uploadShareImage(blob);
@@ -297,21 +274,29 @@ export async function squadScreen(app, opts = {}) {
       (close) => [h("a", { class: "btn", href: url, download: "squad.png" }, "Download"), h("button", { class: "btn", onClick: () => { close(); URL.revokeObjectURL(url); } }, "Close")]);
   }
 
+  function importProblem(message) {
+    dialog("Couldn't import the build", [h("p", {}, message)], (close) => [h("button", { class: "btn", onClick: close }, "OK")]);
+  }
+
   async function importCode() {
-    importErr.textContent = "";
+    const text = importInput.value.trim();
+    if (!text) return importProblem("Paste a squadcode first.");
+    let next;
     try {
-      const next = S.fromDecoded(decode(importInput.value));
-      commit(next);
-      noteBox.value = next.description;
-      importInput.value = "";
-      await loadPool();
-      paintRoster();
-      paintNote();
-      paint();
-      toast("Build imported ✔");
+      next = S.fromDecoded(decode(text));
     } catch (err) {
-      importErr.textContent = err instanceof CodeError ? err.message : String(err);
+      return importProblem(err instanceof CodeError ? err.message : "That doesn't look like a valid squadcode.");
     }
+    commit(next);
+    noteBox.value = next.description;
+    importInput.value = "";
+    await loadPool();
+    paintRoster();
+    paintNote();
+    paint();
+    pane = "note";                                   // la build ya esta cargada: se pasa a la nota
+    paintPane();
+    toast("Build imported ✔");
   }
 
   // ---------------------------------------------------------------- eventos
@@ -325,7 +310,7 @@ export async function squadScreen(app, opts = {}) {
     commit(S.clearSlot(draft, Number(slot.dataset.slot)));
     paint();
   });
-  attachTooltips(grid, (uuid) => unitInfo(charOf(uuid), draft.mode === "profile" ? owned : null), { touch: false });
+  attachTooltips(grid, (uuid) => unitInfo(charOf(uuid), null), { touch: false });
   noteBox.addEventListener("input", () => {
     const clamped = S.clampDescription(noteBox.value);
     if (clamped !== noteBox.value) noteBox.value = clamped;
@@ -365,26 +350,4 @@ export async function squadScreen(app, opts = {}) {
   paintNote();
   paint();
   paintPane();
-}
-
-
-/** Recorta el texto con "…" para que quepa en ``max`` pixeles. */
-function fit(ctx, text, max) {
-  if (ctx.measureText(text).width <= max) return text;
-  let t = text;
-  while (t.length > 1 && ctx.measureText(`${t}…`).width > max) t = t.slice(0, -1);
-  return `${t}…`;
-}
-
-/** Parte un texto en lineas de ~``width`` caracteres, respetando los saltos de linea (maximo 6 lineas). */
-function wrapLines(text, width) {
-  const out = [];
-  for (const para of text.split("\n")) {
-    let line = "";
-    for (const word of para.split(/\s+/).filter(Boolean)) {
-      if (line && `${line} ${word}`.length > width) { out.push(line); line = word; } else line = line ? `${line} ${word}` : word;
-    }
-    out.push(line);
-  }
-  return out.slice(0, 6);
 }

@@ -39,3 +39,10 @@ export async function uploadShareImage(blob) {
 export async function searchProfiles(query) {
   return (await call(`/api/search?q=${encodeURIComponent(query)}`)).results;
 }
+
+/** Noticias vigentes: [{ id, kind, text, url, image, expire }]. No necesita sesion. */
+export async function getNews() {
+  const reply = await fetch("/api/news");
+  if (!reply.ok) throw new Error(`Error ${reply.status}`);
+  return (await reply.json()).items;
+}

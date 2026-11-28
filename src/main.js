@@ -1,12 +1,14 @@
 import { unzlibSync, zlibSync } from "fflate";
-import { configureZlib } from "../shared/squadCodec.js";
+import { configureZlib, decode } from "../shared/squadCodec.js";
 import { getRoster, setToken } from "./api.js";
-import { login } from "./discord.js";
+import { login, sdk } from "./discord.js";
 import { h, mount } from "./dom.js";
 import { homeScreen } from "./screens/home.js";
 import { profileEditScreen, profileScreen } from "./screens/profile.js";
 import { squadScreen } from "./screens/squad.js";
 import { routes, state } from "./state.js";
+import * as S from "./squadState.js";
+import { toast } from "./ui.js";
 import "./styles.css";
 
 configureZlib({ deflate: (b) => zlibSync(b, { level: 9 }), inflate: (b) => unzlibSync(b) });
@@ -21,6 +23,13 @@ routes.profile = () => profileScreen(app);
 routes.profileEdit = () => profileEditScreen(app);
 routes.squad = (opts) => squadScreen(app, opts);
 
+/** Build que trae el enlace "Load build through activity" del bot: ``custom_id`` (lo documentado por Discord) o ``?squadcode=``. */
+function linkedBuild() {
+  const raw = sdk.customId || new URLSearchParams(location.search).get("squadcode");
+  if (!raw) return null;
+  try { return S.fromDecoded(decode(raw)); } catch { return false; }
+}
+
 (async () => {
   mount(app, h("p", { class: "loading" }, "Conectando con Discord…"));
   try {
@@ -29,7 +38,14 @@ routes.squad = (opts) => squadScreen(app, opts);
     state.user = session.user;
     state.roster = await getRoster();
     state.byUuid = new Map(state.roster.map((c) => [c.uuid, c]));
-    routes.home();
+    const linked = linkedBuild();
+    if (linked) {
+      state.draft = linked;
+      routes.squad();
+    } else {
+      routes.home();
+      if (linked === false) toast("That build link isn't valid");
+    }
   } catch (err) {
     console.error(err);
     mount(app, h("p", { class: "error" }, `No se pudo iniciar: ${err.message}`),

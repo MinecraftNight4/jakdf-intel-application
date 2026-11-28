@@ -91,3 +91,21 @@ Todo el estilo está en `src/styles.css`.
 - **Por temporada:** en `main.js` pon `document.documentElement.dataset.season = "winter"` y en el CSS escribe `html[data-season="winter"] { --g-panel: #9fd8ff; }`.
 
 Con `npm run dev` ves los cambios al instante.
+
+## Noticias del inicio
+
+La pantalla principal lee `news_list` de un JSON publicado en GitHub a traves de `/api/news` (la Activity no puede llamar
+a dominios externos directamente). Por defecto usa
+`https://raw.githubusercontent.com/MinecraftNight4/jakdf-backup-data/refs/heads/main/last.json`; para cambiarlo define la
+variable de entorno `NEWS_URL` en Vercel. Cada noticia necesita `text`, `http` (https), `icon` (imagen `data:image/...;base64,`)
+y `expire` (segundos unix; `0` = no caduca). Las caducadas no se muestran. El resultado se cachea 5 minutos en el CDN de Vercel.
+
+## Iconos
+
+Los iconos estan incrustados como SVG en `src/icons.js` (sin cargar Google Fonts, que Discord bloquea dentro de la Activity).
+Para usar el glifo oficial de Material Symbols, copia el contenido del `.svg` y sustituyelo en la entrada correspondiente.
+
+## Imagen de "SHARE SQUAD IMAGE"
+
+Imita la del bot. Usa las fuentes y los iconos de personajes de `public/` y, opcionalmente, `public/icon/duo.png` y
+`public/icon/and.png` (los separadores entre tarjetas; si faltan se dibujan `~` y `&`). Copialos desde `sys_save/profile/icon/` del bot.
